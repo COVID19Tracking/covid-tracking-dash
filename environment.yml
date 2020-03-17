@@ -1,0 +1,15 @@
+name: covid
+channels:
+- conda-forge
+- plotly
+- defaults
+dependencies:
+- python=3.8
+- jupyter
+- pandas
+- requests
+- pip
+- pip:
+  - dash==1.8.0
+  - Flask-Caching
+  - dash-bootstrap-components

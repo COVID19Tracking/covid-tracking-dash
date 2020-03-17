@@ -1,11 +1,8 @@
 ## COVID Tracking
 
-Dash app for visualizations of data from https://covidtracking.com/api
+[Dash](https://plot.ly/dash/) app for visualizations of data from https://covidtracking.com, currently running [here](http://35.245.250.197:8050/):
 
-#### Environment
+![screenshot.png](docs/images/screenshot.png)
 
-```bash
-conda create -n convid python=3.8
-conda install pip
-pip install dash==1.8.0 jupyter pandas Flask-Caching requests dash-bootstrap-components
-```
+
+
