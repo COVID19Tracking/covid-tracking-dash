@@ -92,7 +92,7 @@ STATES = {
     for v in US_STATES
 }
 ALL_STATES_ID = 'all'
-RS_LOGO = "https://storage.googleapis.com/covid-tracking/images/rs_logo.jpeg"
+RS_LOGO = "https://images.plot.ly/logo/new-branding/plotly-logomark.png"
 
 STATS = {
     v['id']: v for v in [
@@ -140,7 +140,7 @@ app.layout = html.Div([
                 dbc.Row(
                     [
                         dbc.Col(html.Img(src=RS_LOGO, height="30px")),
-                        dbc.Col(dbc.NavbarBrand("Related Sciences", className="ml-2")),
+                        dbc.Col(dbc.NavbarBrand("COVID Tracking Project", className="ml-2")),
                     ],
                     align="center",
                     no_gutters=True,
