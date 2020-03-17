@@ -7,6 +7,7 @@ import dash_html_components as html
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output
 from flask_caching import Cache
+import argparse
 import plotly.express as px
 import plotly.graph_objects as go
 import logging
@@ -91,7 +92,7 @@ STATES = {
     for v in US_STATES
 }
 ALL_STATES_ID = 'all'
-RS_LOGO = "https://images.plot.ly/logo/new-branding/plotly-logomark.png"
+RS_LOGO = "https://storage.googleapis.com/covid-tracking/images/rs_logo.jpeg"
 
 STATS = {
     v['id']: v for v in [
@@ -113,7 +114,6 @@ DEFAULT_METRIC = TOTAL_STAT_ID
 @cache.memoize(timeout=TIMEOUT)
 def get_data(endpoint):
     url = BASE_URL + endpoint
-    print(url)
     return pd.DataFrame(requests.get(url).json())
 
 
@@ -214,8 +214,8 @@ app.layout = html.Div([
                     id='plot-stats',
                     figure=go.Figure(data=[], layout=go.Layout(
                         plot_bgcolor='white', paper_bgcolor='white',
-                        xaxis=go.XAxis(showticklabels=False),
-                        yaxis=go.YAxis(showticklabels=False)
+                        xaxis=go.layout.XAxis(showticklabels=False),
+                        yaxis=go.layout.YAxis(showticklabels=False)
                     ))
                 )), width={'size': 8, 'offset': 2})
             ]),
@@ -266,16 +266,16 @@ app.layout = html.Div([
                     id='map-states',
                     figure=go.Figure(data=[], layout=go.Layout(
                         plot_bgcolor='white', paper_bgcolor='white',
-                        xaxis=go.XAxis(showticklabels=False),
-                        yaxis=go.YAxis(showticklabels=False)
+                        xaxis=go.layout.XAxis(showticklabels=False),
+                        yaxis=go.layout.YAxis(showticklabels=False)
                     ))
                 )), width=5),
                 dbc.Col(html.Div(dcc.Graph(
                     id='plot-states',
                     figure=go.Figure(data=[], layout=go.Layout(
                         plot_bgcolor='white', paper_bgcolor='white',
-                        xaxis=go.XAxis(showticklabels=False),
-                        yaxis=go.YAxis(showticklabels=False)
+                        xaxis=go.layout.XAxis(showticklabels=False),
+                        yaxis=go.layout.YAxis(showticklabels=False)
                     ))
                 )), width=7)
             ])
@@ -347,4 +347,9 @@ def update_states_plot(metric):
 
 
 if __name__ == '__main__':
-    app.run_server(debug=False, host='0.0.0.0', port=8050)
+    parser = argparse.ArgumentParser(description='Run COVID dashboard.')
+    parser.add_argument('--port', type=int, help='Server port', default=8050)
+    parser.add_argument('--host', type=str, help='Server host', default='0.0.0.0')
+    parser.add_argument('--debug', action='store_true', help='Debug mode')
+    args = parser.parse_args()
+    app.run_server(debug=args.debug, host=args.host, port=args.port)
