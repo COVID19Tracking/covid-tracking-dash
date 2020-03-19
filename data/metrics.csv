@@ -1,0 +1,6 @@
+id,name
+total,Total Reported Cases
+positive,Confirmed Positive Cases
+negative,Confirmed Negative Cases
+pending,Pending Cases
+death,Deaths

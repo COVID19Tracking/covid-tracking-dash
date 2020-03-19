@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
+import math
+import os.path as osp
+from pathlib import Path
 import requests
 import pandas as pd
+import numpy as np
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
@@ -8,7 +12,6 @@ import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output
 from flask_caching import Cache
 import argparse
-import plotly.express as px
 import plotly.graph_objects as go
 import logging
 logger = logging.getLogger(__name__)
@@ -24,84 +27,23 @@ cache = Cache(app.server, config={
 # Constants
 ##################################
 
+PKG_DIR = Path(osp.abspath(__file__)).parent
+DATA_DIR = PKG_DIR.parent / 'data'
 TIMEOUT = 600
 BASE_URL = 'https://covidtracking.com/api/'
-US_STATES = [
-    ('Alabama', 'AL'),
-    ('Alaska', 'AK'),
-    ('Arizona', 'AZ'),
-    ('Arkansas', 'AR'),
-    ('California', 'CA'),
-    ('Colorado', 'CO'),
-    ('Connecticut', 'CT'),
-    ('Delaware', 'DE'),
-    ('Florida', 'FL'),
-    ('Georgia', 'GA'),
-    ('Hawaii', 'HI'),
-    ('Idaho', 'ID'),
-    ('Illinois', 'IL'),
-    ('Indiana', 'IN'),
-    ('Iowa', 'IA'),
-    ('Kansas', 'KS'),
-    ('Kentucky', 'KY'),
-    ('Louisiana', 'LA'),
-    ('Maine', 'ME'),
-    ('Maryland', 'MD'),
-    ('Massachusetts', 'MA'),
-    ('Michigan', 'MI'),
-    ('Minnesota', 'MN'),
-    ('Mississippi', 'MS'),
-    ('Missouri', 'MO'),
-    ('Montana', 'MT'),
-    ('Nebraska', 'NE'),
-    ('Nevada', 'NV'),
-    ('New Hampshire', 'NH'),
-    ('New Jersey', 'NJ'),
-    ('New Mexico', 'NM'),
-    ('New York', 'NY'),
-    ('North Carolina', 'NC'),
-    ('North Dakota', 'ND'),
-    ('Ohio', 'OH'),
-    ('Oklahoma', 'OK'),
-    ('Oregon', 'OR'),
-    ('Pennsylvania', 'PA'),
-    ('Rhode Island', 'RI'),
-    ('South Carolina', 'SC'),
-    ('South Dakota', 'SD'),
-    ('Tennessee', 'TN'),
-    ('Texas', 'TX'),
-    ('Utah', 'UT'),
-    ('Vermont', 'VT'),
-    ('Virginia', 'VA'),
-    ('Washington', 'WA'),
-    ('West Virginia', 'WV'),
-    ('Wisconsin', 'WI'),
-    ('Wyoming', 'WY'),
-    ('District of Columbia', 'DC'),
-    ('Marshall Islands', 'MH'),
-    ('Armed Forces Africa', 'AE'),
-    ('Armed Forces Americas', 'AA'),
-    ('Armed Forces Canada', 'AE'),
-    ('Armed Forces Europe', 'AE'),
-    ('Armed Forces Middle East', 'AE'),
-    ('Armed Forces Pacific', 'AP'),
-    ('All', 'all')
-]
+
+STATES_DATA = pd.read_csv(DATA_DIR / 'states.csv')
 STATES = {
-    v[1]: dict(id=v[1], display=v[0])
-    for v in US_STATES
+    r['code']: r.rename(index=lambda i: 'display' if i == 'name' else i).to_dict()
+    for _, r in STATES_DATA.iterrows()
 }
+STATES['all'] = dict(id='all', display='All')
 ALL_STATES_ID = 'all'
 RS_LOGO = "https://images.plot.ly/logo/new-branding/plotly-logomark.png"
 
 STATS = {
-    v['id']: v for v in [
-        dict(id='total', display='Total Reported Cases'),
-        dict(id='positive', display='Confirmed Positive Cases'),
-        dict(id='negative', display='Confirmed Negative Cases'),
-        dict(id='pending', display='Pending Cases'),
-        dict(id='death', display='Deaths'),
-    ]
+    r.id: dict(id=r.id, display=r.name)
+    for r in pd.read_csv(DATA_DIR / 'metrics.csv').itertuples()
 }
 TOTAL_STAT_ID = 'total'
 DEFAULT_STATE = ALL_STATES_ID
@@ -112,10 +54,31 @@ DEFAULT_METRIC = TOTAL_STAT_ID
 ##################################
 
 @cache.memoize(timeout=TIMEOUT)
-def get_data(endpoint):
+def get_endpoint_data(endpoint):
     url = BASE_URL + endpoint
-    return pd.DataFrame(requests.get(url).json())
+    return requests.get(url).json()
 
+def add_state_metadata(df):
+    if 'state' not in df:
+        return df
+    cols = ['state', 'name', 'centroid_lat', 'centroid_lon', 'population']
+    df_states = STATES_DATA.rename(columns={'code': 'state'})[cols]
+    df = pd.merge(df, df_states, on='state', how='left')
+    return df
+
+def add_percapita_stats(df):
+    if 'population' not in df:
+        return df
+    for c in STATS.keys():
+        if c in df:
+            df[c + '_pc'] = 1E6 * df[c] / df['population']
+    return df
+
+def get_data(endpoint):
+    df = pd.DataFrame(get_endpoint_data(endpoint))
+    df = add_state_metadata(df)
+    df = add_percapita_stats(df)
+    return df
 
 class API(object):
 
@@ -258,7 +221,17 @@ app.layout = html.Div([
                             placeholder='Choose Statistic ...'
                         )
                     ],
-                    width={'size': 2, 'offset': 10}
+                    width={'size': 2, 'offset': 9},
+                    style={'padding-right': '2px'}
+                ),
+                dbc.Col([
+                    dcc.Checklist(
+                        id='states-pc',
+                        options=[{'label': 'Per-capita', 'value': 'pc'}],
+                        value=[]
+                    )],
+                    width={'size': 1},
+                    style={'padding-left': '2px', 'margin-top': '5px'}
                 )
             ]),
             dbc.Row([
@@ -286,7 +259,9 @@ app.layout = html.Div([
 ])
 
 
-@app.callback(Output('plot-stats', 'figure'), [Input('stats-state', 'value')])
+@app.callback(Output('plot-stats', 'figure'), [
+    Input('stats-state', 'value')
+])
 def update_stats_plot(state):
     if state is None:
         state = DEFAULT_STATE
@@ -302,6 +277,7 @@ def update_stats_plot(state):
     data = [
         go.Scatter(x=df['date'], y=df[c], name=STATS[c]['display'])
         for c in sorted(STATS.keys())
+        if c in df
     ]
     layout = go.Layout()
     fig = go.Figure(data=data, layout=layout)
@@ -314,24 +290,70 @@ def update_stats_plot(state):
     )
     return fig
 
-@app.callback(Output('map-states', 'figure'), [Input('states-metric', 'value')])
-def update_states_map(metric):
+
+@app.callback(Output('map-states', 'figure'), [
+    Input('states-metric', 'value'),
+    Input('states-pc', 'value')
+])
+def update_states_map(metric, pc, map_mode='scatter'):
+    if map_mode not in ['choropleth', 'scatter']:
+        raise ValueError(f'Map mode must be one of "choropleth" or "scatter" (not "{map_mode}")')
     if metric is None:
         metric = DEFAULT_METRIC
+    if pc:
+        metric = metric + '_pc'
+
     df = api.states_current
-    fig = px.choropleth(
-        locations=df['state'], locationmode="USA-states",
-        color=df[metric], scope="usa",
-        color_continuous_scale=[(0, "green"), (.1, "yellow"), (1, "red")]
+    df = df[df[metric] > 0]
+
+    if map_mode == 'choropleth':
+        data = [
+            go.Choropleth(
+                locations=df['state'],
+                z=df[metric],
+                locationmode='USA-states',
+                colorscale=[[0,'green'], [.1, 'yellow'], [1,'red']],
+                colorbar_title=''
+            )
+        ]
+    else:
+        data = [
+            go.Scattergeo(
+                lat=df['centroid_lat'],
+                lon=df['centroid_lon'],
+                marker=dict(
+                    size=(10 + 30 * (df[metric] / df[metric].max())).fillna(0),
+                    color=df[metric],
+                    cmin=0,
+                    cmax=df[metric].max(),
+                    colorscale=[[0, 'green'], [.1, 'yellow'], [1, 'red']],
+                    colorbar_title=''
+                ),
+                text=df.apply(lambda r: f'{r["name"]}: {math.ceil(r[metric]):.0f}', axis=1),
+                locationmode='USA-states',
+                hoverinfo='text'
+            )
+        ]
+
+    title = f'{STATS[metric.split("_")[0]]["display"]} {"per 100k Residents" if pc else ""} (To Date)'
+    layout = go.Layout(
+        title=title,
+        plot_bgcolor='white', paper_bgcolor='white',
+        margin=dict(r=0, l=0),
+        geo=go.layout.Geo(scope='usa')
     )
-    title = f'{STATS[metric]["display"]} (To Date)'
-    fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', margin=dict(r=0, l=0), title=title)
+    fig = go.Figure(data=data, layout=layout)
     return fig
 
-@app.callback(Output('plot-states', 'figure'), [Input('states-metric', 'value')])
-def update_states_plot(metric):
+@app.callback(Output('plot-states', 'figure'), [
+    Input('states-metric', 'value'),
+    Input('states-pc', 'value')
+])
+def update_states_plot(metric, pc):
     if metric is None:
         metric = DEFAULT_METRIC
+    if pc:
+        metric = metric + '_pc'
     df = api.states_daily
     df['date'] = pd.to_datetime(df['date'], format='%Y%m%d')
     df = df.pivot_table(index='date', columns='state', values=metric)
@@ -341,7 +363,7 @@ def update_states_plot(metric):
     ]
     layout = go.Layout()
     fig = go.Figure(data=data, layout=layout)
-    title = f'{STATS[metric]["display"]} (Daily)'
+    title = f'{STATS[metric.split("_")[0]]["display"]} {"per 100k Residents" if pc else ""} (Daily)'
     fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', title=title, yaxis_type='log')
     return fig
 
