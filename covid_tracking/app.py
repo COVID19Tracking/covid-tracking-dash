@@ -228,7 +228,7 @@ app.layout = html.Div([
                     dcc.Checklist(
                         id='states-pc',
                         options=[{'label': 'Per-capita', 'value': 'pc'}],
-                        value=[]
+                        value=['pc']
                     )],
                     width={'size': 1},
                     style={'padding-left': '2px', 'margin-top': '5px'}
