@@ -228,10 +228,18 @@ app.layout = html.Div([
                     dcc.Checklist(
                         id='states-pc',
                         options=[{'label': 'Per-capita', 'value': 'pc'}],
-                        value=['pc']
-                    )],
+                        value=['pc'],
+                        style={'position': 'relative', 'top': '-6px'}
+                    ),
+                    dcc.Checklist(
+                        id='states-log',
+                        options=[{'label': 'Logarithmic', 'value': 'log'}],
+                        value=[],
+                        style={'position': 'relative', 'top': '-18px'}
+                    )
+                    ],
                     width={'size': 1},
-                    style={'padding-left': '2px', 'margin-top': '5px'}
+                    style={'padding-left': '2px', 'margin-top': '0px'}
                 )
             ]),
             dbc.Row([
@@ -347,9 +355,10 @@ def update_states_map(metric, pc, map_mode='scatter'):
 
 @app.callback(Output('plot-states', 'figure'), [
     Input('states-metric', 'value'),
-    Input('states-pc', 'value')
+    Input('states-pc', 'value'),
+    Input('states-log', 'value')
 ])
-def update_states_plot(metric, pc):
+def update_states_plot(metric, pc, log):
     if metric is None:
         metric = DEFAULT_METRIC
     if pc:
@@ -364,7 +373,7 @@ def update_states_plot(metric, pc):
     layout = go.Layout()
     fig = go.Figure(data=data, layout=layout)
     title = f'{STATS[metric.split("_")[0]]["display"]} {"per 100k Residents" if pc else ""} (Daily)'
-    fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', title=title, yaxis_type='log')
+    fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', title=title, yaxis_type='log' if log else 'linear')
     return fig
 
 
