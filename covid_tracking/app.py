@@ -5,12 +5,14 @@ from pathlib import Path
 import requests
 import pandas as pd
 import numpy as np
+import datetime
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output
 from flask_caching import Cache
+from flask import request
 import argparse
 import plotly.graph_objects as go
 import logging
@@ -266,11 +268,15 @@ app.layout = html.Div([
 
 ])
 
+def log_action(action, *args, **kwargs):
+    # Dump out info for post-hoc traffic monitoring
+    app.logger.warning(f'ACTION|{request.remote_addr}|{datetime.datetime.now()}|{action}|{args}|{kwargs}')
 
 @app.callback(Output('plot-stats', 'figure'), [
     Input('stats-state', 'value')
 ])
 def update_stats_plot(state):
+    log_action('update_stats_plot', state)
     if state is None:
         state = DEFAULT_STATE
     if state == ALL_STATES_ID:
@@ -304,6 +310,7 @@ def update_stats_plot(state):
     Input('states-pc', 'value')
 ])
 def update_states_map(metric, pc, map_mode='scatter'):
+    log_action('update_states_map', metric, pc)
     if map_mode not in ['choropleth', 'scatter']:
         raise ValueError(f'Map mode must be one of "choropleth" or "scatter" (not "{map_mode}")')
     if metric is None:
@@ -359,6 +366,7 @@ def update_states_map(metric, pc, map_mode='scatter'):
     Input('states-log', 'value')
 ])
 def update_states_plot(metric, pc, log):
+    log_action('update_states_plot', metric, pc, log)
     if metric is None:
         metric = DEFAULT_METRIC
     if pc:
