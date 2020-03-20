@@ -29,7 +29,7 @@ cache = Cache(app.server, config={
 
 PKG_DIR = Path(osp.abspath(__file__)).parent
 DATA_DIR = PKG_DIR.parent / 'data'
-TIMEOUT = 600
+TIMEOUT = 10 # Short timeout (10 seconds) to avoid excessive API traffic
 BASE_URL = 'https://covidtracking.com/api/'
 
 STATES_DATA = pd.read_csv(DATA_DIR / 'states.csv')
