@@ -76,8 +76,27 @@ def add_percapita_stats(df):
             df[c + '_pc'] = 1E6 * df[c] / df['population']
     return df
 
+def add_derived_metrics(df,endpoint):
+    """Adding metrics derived from the base stats:
+        newCases: new cases on this day for this state
+        posPerTest: positive test results/ total tests
+    :param df: dataFrame
+    """
+    df['posPerTest'] = df['positive']/df['total']
+
+    if 'states' in endpoint:
+        df['newCases'] = df.sort_values('date').groupby('state').positive.diff() if 'date' in df else df.groupby('state').positive.diff()
+    elif 'us' in endpoint:
+        df['newCases'] = df.sort_values('date').positive.diff() if 'date' in df else df.positive.diff()
+    else:
+        raise NotImplementedError("Only supporting US/ State Level New cases")
+
+
+    return df
+
 def get_data(endpoint):
     df = pd.DataFrame(get_endpoint_data(endpoint))
+    df = add_derived_metrics(df, endpoint)
     df = add_state_metadata(df)
     df = add_percapita_stats(df)
     return df
@@ -129,7 +148,7 @@ app.layout = html.Div([
                         style={'font-size': '36px'}
                     ),
                     html.Div([
-                        html.Div('By Eric Czech',
+                        html.Div('By Eric Czech & Nirek Sharma',
                         style={'font-style': 'italic', 'display': 'inline'}),
                         html.Div('Data updated daily at 4 PM EST',
                         style={'font-style': 'italic', 'color': 'red', 'display': 'inline', 'paddingLeft': '10px'}),
@@ -315,11 +334,18 @@ def update_states_map(metric, pc, map_mode='scatter'):
         raise ValueError(f'Map mode must be one of "choropleth" or "scatter" (not "{map_mode}")')
     if metric is None:
         metric = DEFAULT_METRIC
+
     if pc:
         metric = metric + '_pc'
 
-    df = api.states_current
-    df = df[df[metric] > 0]
+    # Getting today's new cases
+    if 'newCases' in metric:
+        df = api.states_daily
+        df = df[df['date'] == int(datetime.datetime.today().strftime('%Y%m%d'))]
+        df = df[df[metric] > 0]
+    else:
+        df = api.states_current
+        df = df[df[metric] > 0]
 
     if map_mode == 'choropleth':
         data = [
