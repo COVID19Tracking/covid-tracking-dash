@@ -82,11 +82,16 @@ def add_derived_metrics(df,endpoint):
         posPerTest: positive test results/ total tests
     :param df: dataFrame
     """
-    df['posPerTest'] = df['positive']/df['total']
+    if 'positive' in df and 'total' in df:
+        df['posPerTest'] = df['positive']/df['total']
+    else:
+        raise KeyError('Dataframe needs to have `positive` and `total` as columns')
 
-    if 'states' in endpoint:
+    # Condition for "states" data
+    if 'state' in df:
         df['newCases'] = df.sort_values('date').groupby('state').positive.diff() if 'date' in df else df.groupby('state').positive.diff()
-    elif 'us' in endpoint:
+    # Condition for "us" data
+    elif 'states' in df:
         df['newCases'] = df.sort_values('date').positive.diff() if 'date' in df else df.positive.diff()
     else:
         raise NotImplementedError("Only supporting US/ State Level New cases")
@@ -341,7 +346,11 @@ def update_states_map(metric, pc, map_mode='scatter'):
     # Getting today's new cases
     if 'newCases' in metric:
         df = api.states_daily
-        df = df[df['date'] == int(datetime.datetime.today().strftime('%Y%m%d'))]
+        # Handling if this is checked before ther 4PM eastern time update
+        today = int(datetime.datetime.today().strftime('%Y%m%d'))
+        df = df[df['date'] == today]
+        if len(df) == 0:
+            df = df[df['date'] == today -1]
         df = df[df[metric] > 0]
     else:
         df = api.states_current
