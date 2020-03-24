@@ -47,9 +47,8 @@ STATS = {
     r.id: dict(id=r.id, display=r.name)
     for r in pd.read_csv(DATA_DIR / 'metrics.csv').itertuples()
 }
-TOTAL_STAT_ID = 'total'
 DEFAULT_STATE = ALL_STATES_ID
-DEFAULT_METRIC = TOTAL_STAT_ID
+DEFAULT_METRIC = 'total'
 
 ##################################
 # Page Layout and Callbacks
@@ -164,13 +163,15 @@ app.layout = html.Div([
                         'is updated daily and combines several efforts to aggregate and report curated Coronavirus testing data.  See '
                         '[here](https://covidtracking.com/about-tracker/) for more details on how this data is collected.  The '
                         '[API](https://covidtracking.com/api/) documentation may also be helpful for those looking for direct access to the same '
-                        'information shown below.'
+                        'information shown below.\n\n'
+                        'Note that for all graphics, ```Total Tests Administered``` = ```Confirmed Positive Tests``` + ```Confirmed Negative Tests``` + ```Pending Tests``` (```Deaths``` are tracked separately).'
                     ),
                     html.H4('Case Statistics', style={'font-style': 'bold'}),
-                    html.Div(
-                        'This figure shows selected case statistics across the entire U.S. by default, or for a '
-                        'specific state if one is chosen in the dropdown.  Note that individual statistics can be '
-                        'selected while hiding all others by double-clicking on items in the legend on the right.',
+                    html.Div(dcc.Markdown(
+                            'This figure shows selected case statistics across the entire U.S. by default, or for a '
+                            'specific state if one is chosen in the dropdown.  Note that individual statistics can be '
+                            'selected while hiding all others by **double-clicking on items in the legend on the right**.',
+                        ),
                         style={'font-size': '12px', 'color': 'grey'}
                     ),
                 ],
@@ -210,21 +211,15 @@ app.layout = html.Div([
             ]),
             dbc.Row(dbc.Col([
                     html.Hr(),
-                    dcc.Markdown(
-                        'The national trends currently demonstrate near-exponential growth in reported cases '
-                        'yet the rate at which they are confirmed positive is far slower.  Death tolls continue to '
-                        'rise regardless (about 10 per day) and infection rates vary widely by locality.  While '
-                        'county-level data is not available at this time, reliable state-level data is so these '
-                        'disparities can at least be observed at that level of granularity, as shown below.'
-                    ),
                     html.H4('State-Level Breakdowns', style={'font-style': 'bold'}),
-                    html.Div(
-                        'This figure shows a single statistic across all U.S. states, with the map (left) containing '
-                        'aggregate counts to date and the time series (right) containing daily observations.  Note '
-                        'that individual states can be selected in the plot on the right while hiding all others by '
-                        'double-clicking on the corresponding item in the legend.',
+                    html.Div(dcc.Markdown(
+                            'This figure shows a single statistic across all U.S. states, with the map (left) containing '
+                            'aggregate counts to date and the time series (right) containing daily observations.  Note '
+                            'that individual states can be selected in the plot on the right while hiding all others by '
+                            '**double-clicking on the corresponding item in the legend**.',
+                        ),
                         style={'font-size': '12px', 'color': 'grey'}
-                    ),
+                    )
                 ],
                 width=6),
                 justify='center'
@@ -252,16 +247,18 @@ app.layout = html.Div([
                 ),
                 dbc.Col([
                     dcc.Checklist(
-                        id='states-pc',
-                        options=[{'label': 'Per-capita', 'value': 'pc'}],
-                        value=['pc'],
-                        style={'position': 'relative', 'top': '-6px'}
-                    ),
-                    dcc.Checklist(
-                        id='states-log',
-                        options=[{'label': 'Logarithmic', 'value': 'log'}],
-                        value=[],
-                        style={'position': 'relative', 'top': '-18px'}
+                        id='states-options',
+                        options=[
+                            {'label': 'Per-capita', 'value': 'percapita'},
+                            {'label': 'Logarithmic', 'value': 'logarithmic'},
+                            {'label': 'Choropleth', 'value': 'choropleth'},
+                        ],
+                        value=['percapita', 'choropleth'],
+                        style={'position': 'relative', 'margin-top': '-7px', 'margin-bottom': '-3px'},
+                        labelStyle={
+                            'font-family': 'arial', 'margin': '0px', 'border': '0px',
+                            'padding': '0px', 'font-size': '12px', 'display': 'block'
+                        }
                     )
                     ],
                     width={'size': 1},
@@ -288,7 +285,15 @@ app.layout = html.Div([
             ])
         ],
         style={'margin': 'auto', 'width': '98%'}
-    )
+    ),
+
+    dbc.CardFooter([
+            html.Img(alt="Creative Commons License", src="https://i.creativecommons.org/l/by/4.0/88x31.png", style={'display': 'inline'}),
+            html.Div('This work is licensed under a', style={'display': 'inline', 'margin-left': '5px', 'margin-right': '5px'}),
+            html.A('Creative Commons Attribution 4.0 International License', rel="license", href="http://creativecommons.org/licenses/by/4.0/")
+#<img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by/4.0/88x31.png" /></a><br />.
+#This work is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License</a>
+    ]),
 
 ])
 
@@ -331,16 +336,14 @@ def update_stats_plot(state):
 
 @app.callback(Output('map-states', 'figure'), [
     Input('states-metric', 'value'),
-    Input('states-pc', 'value')
+    Input('states-options', 'value')
 ])
-def update_states_map(metric, pc, map_mode='scatter'):
-    log_action('update_states_map', metric, pc)
-    if map_mode not in ['choropleth', 'scatter']:
-        raise ValueError(f'Map mode must be one of "choropleth" or "scatter" (not "{map_mode}")')
+def update_states_map(metric, options):
+    log_action('update_states_map', metric, options)
     if metric is None:
         metric = DEFAULT_METRIC
-
-    if pc:
+        
+    if 'percapita' in options:
         metric = metric + '_pc'
 
     # Getting today's new cases
@@ -356,14 +359,16 @@ def update_states_map(metric, pc, map_mode='scatter'):
         df = api.states_current
         df = df[df[metric] > 0]
 
-    if map_mode == 'choropleth':
+    if 'choropleth' in options:
         data = [
             go.Choropleth(
                 locations=df['state'],
                 z=df[metric],
                 locationmode='USA-states',
                 colorscale=[[0,'green'], [.1, 'yellow'], [1,'red']],
-                colorbar_title=''
+                colorbar_title='',
+                text=df.apply(lambda r: f'{r["name"]}: {math.ceil(r[metric]):.0f}', axis=1),
+                hoverinfo='text'
             )
         ]
     else:
@@ -380,12 +385,12 @@ def update_states_map(metric, pc, map_mode='scatter'):
                     colorbar_title=''
                 ),
                 text=df.apply(lambda r: f'{r["name"]}: {math.ceil(r[metric]):.0f}', axis=1),
-                locationmode='USA-states',
-                hoverinfo='text'
+                hoverinfo='text',
+                locationmode='USA-states'
             )
         ]
 
-    title = f'{STATS[metric.split("_")[0]]["display"]} {"per 100k Residents" if pc else ""} (To Date)'
+    title = f'{STATS[metric.split("_")[0]]["display"]}{" per 100k Residents" if "percapita" in options else ""} (To Date)'
     layout = go.Layout(
         title=title,
         plot_bgcolor='white', paper_bgcolor='white',
@@ -397,14 +402,13 @@ def update_states_map(metric, pc, map_mode='scatter'):
 
 @app.callback(Output('plot-states', 'figure'), [
     Input('states-metric', 'value'),
-    Input('states-pc', 'value'),
-    Input('states-log', 'value')
+    Input('states-options', 'value')
 ])
-def update_states_plot(metric, pc, log):
-    log_action('update_states_plot', metric, pc, log)
+def update_states_plot(metric, options):
+    log_action('update_states_plot', options)
     if metric is None:
         metric = DEFAULT_METRIC
-    if pc:
+    if 'percapita' in options:
         metric = metric + '_pc'
     df = api.states_daily
     df['date'] = pd.to_datetime(df['date'], format='%Y%m%d')
@@ -415,8 +419,8 @@ def update_states_plot(metric, pc, log):
     ]
     layout = go.Layout()
     fig = go.Figure(data=data, layout=layout)
-    title = f'{STATS[metric.split("_")[0]]["display"]} {"per 100k Residents" if pc else ""} (Daily)'
-    fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', title=title, yaxis_type='log' if log else 'linear')
+    title = f'{STATS[metric.split("_")[0]]["display"]}{" per 100k Residents" if "percapita" in options else ""} (Daily)'
+    fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', title=title, yaxis_type='log' if 'logarithmic' in options else 'linear')
     return fig
 
 

@@ -1,8 +1,9 @@
 id,name
-total,Total Reported Cases
-positive,Confirmed Positive Cases
-negative,Confirmed Negative Cases
-pending,Pending Cases
+total,Total Tests Administered
+positive,Confirmed Positive Tests
+negative,Confirmed Negative Tests
+pending,Pending Tests
 death,Deaths
 posPerTest, Confirmed Positive Cases Per Test
 newCases, New Cases This Day
+
