@@ -4,3 +4,6 @@ positive,Confirmed Positive Tests
 negative,Confirmed Negative Tests
 pending,Pending Tests
 death,Deaths
+posPerTest, Confirmed Positive Cases Per Test
+newCases, New Cases This Day
+

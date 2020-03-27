@@ -75,8 +75,32 @@ def add_percapita_stats(df):
             df[c + '_pc'] = 1E6 * df[c] / df['population']
     return df
 
+def add_derived_metrics(df,endpoint):
+    """Adding metrics derived from the base stats:
+        newCases: new cases on this day for this state
+        posPerTest: positive test results/ total tests
+    :param df: dataFrame
+    """
+    if 'positive' in df and 'total' in df:
+        df['posPerTest'] = df['positive']/df['total']
+    else:
+        raise KeyError('Dataframe needs to have `positive` and `total` as columns')
+
+    # Condition for "states" data
+    if 'state' in df:
+        df['newCases'] = df.sort_values('date').groupby('state').positive.diff() if 'date' in df else df.groupby('state').positive.diff()
+    # Condition for "us" data
+    elif 'states' in df:
+        df['newCases'] = df.sort_values('date').positive.diff() if 'date' in df else df.positive.diff()
+    else:
+        raise NotImplementedError("Only supporting US/ State Level New cases")
+
+
+    return df
+
 def get_data(endpoint):
     df = pd.DataFrame(get_endpoint_data(endpoint))
+    df = add_derived_metrics(df, endpoint)
     df = add_state_metadata(df)
     df = add_percapita_stats(df)
     return df
@@ -128,7 +152,7 @@ app.layout = html.Div([
                         style={'font-size': '36px'}
                     ),
                     html.Div([
-                        html.Div('By Eric Czech',
+                        html.Div('By Eric Czech & Nirek Sharma',
                         style={'font-style': 'italic', 'display': 'inline'}),
                         html.Div('Data updated daily at 4 PM EST',
                         style={'font-style': 'italic', 'color': 'red', 'display': 'inline', 'paddingLeft': '10px'}),
@@ -318,11 +342,22 @@ def update_states_map(metric, options):
     log_action('update_states_map', metric, options)
     if metric is None:
         metric = DEFAULT_METRIC
+        
     if 'percapita' in options:
         metric = metric + '_pc'
 
-    df = api.states_current
-    df = df[df[metric] > 0]
+    # Getting today's new cases
+    if 'newCases' in metric:
+        df = api.states_daily
+        # Handling if this is checked before ther 4PM eastern time update
+        today = int(datetime.datetime.today().strftime('%Y%m%d'))
+        df = df[df['date'] == today]
+        if len(df) == 0:
+            df = df[df['date'] == today -1]
+        df = df[df[metric] > 0]
+    else:
+        df = api.states_current
+        df = df[df[metric] > 0]
 
     if 'choropleth' in options:
         data = [
