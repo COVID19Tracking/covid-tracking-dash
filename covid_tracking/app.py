@@ -44,8 +44,8 @@ ALL_STATES_ID = 'all'
 RS_LOGO = "https://images.plot.ly/logo/new-branding/plotly-logomark.png"
 
 STATS = {
-    r.id: dict(id=r.id, display=r.name)
-    for r in pd.read_csv(DATA_DIR / 'metrics.csv').itertuples()
+    r['id']: r.rename(index={'name': 'display'}).to_dict()
+    for _, r in pd.read_csv(DATA_DIR / 'metrics.csv').sort_values('order').iterrows()
 }
 DEFAULT_STATE = ALL_STATES_ID
 DEFAULT_METRIC = 'total'
@@ -72,35 +72,20 @@ def add_percapita_stats(df):
         return df
     for c in STATS.keys():
         if c in df:
-            df[c + '_pc'] = 1E6 * df[c] / df['population']
+            df[c + '_pc'] = 1E5 * df[c] / df['population']
     return df
 
-def add_derived_metrics(df,endpoint):
-    """Adding metrics derived from the base stats:
-        newCases: new cases on this day for this state
-        posPerTest: positive test results/ total tests
-    :param df: dataFrame
-    """
-    if 'positive' in df and 'total' in df:
-        df['posPerTest'] = df['positive']/df['total']
-    else:
-        raise KeyError('Dataframe needs to have `positive` and `total` as columns')
 
-    # Condition for "states" data
-    if 'state' in df:
-        df['newCases'] = df.sort_values('date').groupby('state').positive.diff() if 'date' in df else df.groupby('state').positive.diff()
-    # Condition for "us" data
-    elif 'states' in df:
-        df['newCases'] = df.sort_values('date').positive.diff() if 'date' in df else df.positive.diff()
-    else:
-        raise NotImplementedError("Only supporting US/ State Level New cases")
-
-
+def add_derived_metrics(df):
+    if 'positive' in df:
+        df['positive-diff'] = df\
+            .pipe(lambda df: df.sort_values('date') if 'date' in df else df)\
+            .pipe(lambda df: df.groupby('state')['positive'].diff() if 'state' in df else df['positive'].diff())
     return df
 
 def get_data(endpoint):
     df = pd.DataFrame(get_endpoint_data(endpoint))
-    df = add_derived_metrics(df, endpoint)
+    df = add_derived_metrics(df)
     df = add_state_metadata(df)
     df = add_percapita_stats(df)
     return df
@@ -164,7 +149,10 @@ app.layout = html.Div([
                         '[here](https://covidtracking.com/about-tracker/) for more details on how this data is collected.  The '
                         '[API](https://covidtracking.com/api/) documentation may also be helpful for those looking for direct access to the same '
                         'information shown below.\n\n'
-                        'Note that for all graphics, ```Total Tests Administered``` = ```Confirmed Positive Tests``` + ```Confirmed Negative Tests``` + ```Pending Tests``` (```Deaths``` are tracked separately).'
+                        'Note that for all graphics, the contained metrics have the following properties:\n\n'
+                        '- ```Total Tests Administered``` = ```Positive Tests``` + ```Negative Tests``` + ```Pending Tests```\n'
+                        '- ```Positive Tests (New)```: Daily change in confirmed positive tests\n'  
+                        '- ```Deaths``` and ```Hospitalizations```: Recorded separately with no relationship to other metrics\n'
                     ),
                     html.H4('Case Statistics', style={'font-style': 'bold'}),
                     html.Div(dcc.Markdown(
@@ -316,10 +304,11 @@ def update_stats_plot(state):
         if len(df) == 0:
             logger.warning(f'No data found for state {state}')
             return go.Figure()
+
     df['date'] = pd.to_datetime(df['date'], format='%Y%m%d')
     data = [
-        go.Scatter(x=df['date'], y=df[c], name=STATS[c]['display'])
-        for c in sorted(STATS.keys())
+        go.Scatter(x=df['date'], y=df[c], name=STATS[c]['display'], visible='legendonly' if STATS[c]['type'] == 'diff' else True)
+        for c in STATS.keys()
         if c in df
     ]
     layout = go.Layout()
@@ -342,19 +331,15 @@ def update_states_map(metric, options):
     log_action('update_states_map', metric, options)
     if metric is None:
         metric = DEFAULT_METRIC
-        
+    metric_type = STATS[metric]['type']
     if 'percapita' in options:
         metric = metric + '_pc'
 
-    # Getting today's new cases
-    if 'newCases' in metric:
+    if metric_type == 'diff':
         df = api.states_daily
-        # Handling if this is checked before ther 4PM eastern time update
-        today = int(datetime.datetime.today().strftime('%Y%m%d'))
-        df = df[df['date'] == today]
-        if len(df) == 0:
-            df = df[df['date'] == today -1]
-        df = df[df[metric] > 0]
+        df = df[df['date'] == df['date'].max()]
+        # Ignore negative diffs on monotonic increasing values as these are likely reporting errors
+        df = df[df[metric] >= 0]
     else:
         df = api.states_current
         df = df[df[metric] > 0]
@@ -372,15 +357,16 @@ def update_states_map(metric, options):
             )
         ]
     else:
+        v = df[metric]
         data = [
             go.Scattergeo(
                 lat=df['centroid_lat'],
                 lon=df['centroid_lon'],
                 marker=dict(
-                    size=(10 + 30 * (df[metric] / df[metric].max())).fillna(0),
-                    color=df[metric],
-                    cmin=0,
-                    cmax=df[metric].max(),
+                    size=(10 + 30 * ((v - v.min()) / (v.max() - v.min()))).fillna(0),
+                    color=v,
+                    cmin=v.min(),
+                    cmax=v.max(),
                     colorscale=[[0, 'green'], [.1, 'yellow'], [1, 'red']],
                     colorbar_title=''
                 ),

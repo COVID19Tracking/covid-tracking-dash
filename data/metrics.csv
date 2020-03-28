@@ -1,9 +1,8 @@
-id,name
-total,Total Tests Administered
-positive,Confirmed Positive Tests
-negative,Confirmed Negative Tests
-pending,Pending Tests
-death,Deaths
-posPerTest, Confirmed Positive Cases Per Test
-newCases, New Cases This Day
-
+id,type,name,order
+total,total,Total Tests Administered,0
+positive,total,Positive Tests,1
+positive-diff,diff,Positive Tests (New),2
+hospitalized,total,Hospitalizations,3
+death,total,Deaths,4
+negative,total,Negative Tests,5
+pending,total,Pending Tests,6
